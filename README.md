@@ -2,7 +2,7 @@
 
 `Video_Synchronizer` aligns multimodal recordings across cameras using audio, then maps the synchronized cut boundaries back to gaze/world timestamp files.
 
-This folder contains the synchronization stage of the GBAT workflow. It is designed for datasets where videos follow a `{subject}_{camera}.mp4` naming pattern and where gaze/world CSV files are available for the egocentric cameras.
+This folder contains the Video_Synchronizer of the GBAT toolkit. It is designed for datasets where videos follow a `{subject}_{camera}.mp4` naming pattern and where gaze/world CSV files are available for the egocentric cameras.
 
 ## Main Scripts
 
