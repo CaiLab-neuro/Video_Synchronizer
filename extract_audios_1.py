@@ -5,88 +5,99 @@ import argparse
 """
 Author: Yanbin Xu
 Date: 1/18/2026
-Description: Extract audio from multiple videos for multiple subjects and camera types.
-If you want to process all subjects, do not provide --subject-ids argument.
-Else, provide a comma-separated list of subject IDs to process only those subjects.
+Description: Extract audio from either all videos in a folder or one specific video file.
 
 Example:
-python extract_audios.py <input_dir> <output_dir> [--subject-ids <subject_id>] [--log-path <log_file_path>]
+python extract_audios_1.py <input_path> <output_dir>
 
 Inputs:
-    1) Subject ID(s) and Camera ID(s).
-    Subject ID: e.g. 27 or 27,28 etc.
-    Camera ID: e.g. child or parent or child,parent
-
-    2) Video directory: /path/to/video_data
-    Within this directory, the code expects
-        a) videos: *{subject_id}_{camera}.mp4*
+    1) input_path:
+        - a video directory, in which case all supported video files are processed
+        - or a single video file, in which case only that file is processed
     
 Outputs:
-    1) Extracted audio files: *{subject_id}_{camera}.wav* in the output directory.
+    1) Extracted audio files: *{video_stem}.wav* in the output directory.
        
 """
 
-def extract_audios(subj_ids, cameras, input_dir, output_dir):
-    for subj in subj_ids:
-        for cam in cameras:
-            video_path = Path(f"{input_dir}/{subj}_{cam}.mp4")
-            output_path = Path(f"{output_dir}/{subj}_{cam}.wav")
-            if not video_path.exists():
-                print(f"[skip] Subject {subj}, camera {cam}: video not found: {video_path}")
-                continue
-            # Build ffmpeg command
-            print (f"Extracting audio from {video_path} to {output_path}")
+VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
 
-            # FFmpeg command
-            cmd = [
-                "ffmpeg",
-                "-y",                # overwrite output file if exists
-                "-i", str(video_path),    # input file
-                "-vn",               # no video
-                "-c:a", "pcm_s16le", # uncompressed 16-bit PCM
-                "-ar", "48000",      # set audio sample rate to 48000 Hz
-                "-ac", "1",          # set number of audio channels to 1 (mono)
-                str(output_path)
-            ]
-            # Run the command
-            subprocess.run(cmd, check=True)
+
+def discover_videos(input_path: Path) -> list[Path]:
+    if input_path.is_file():
+        if input_path.suffix.lower() not in VIDEO_EXTENSIONS:
+            raise ValueError(f"Unsupported video file extension: {input_path.suffix}")
+        return [input_path]
+
+    if input_path.is_dir():
+        videos = sorted(
+            p for p in input_path.iterdir()
+            if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS
+        )
+        return videos
+
+    raise FileNotFoundError(f"Input path not found: {input_path}")
+
+
+def extract_audio_from_video(video_path: Path, output_dir: Path, sample_rate: int) -> None:
+    output_path = output_dir / f"{video_path.stem}.wav"
+    print(f"Extracting audio from {video_path} to {output_path} at {sample_rate} Hz")
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i", str(video_path),
+        "-vn",
+        "-c:a", "pcm_s16le",
+        "-ar", str(sample_rate),
+        "-ac", "1",
+        str(output_path)
+    ]
+    subprocess.run(cmd, check=True)
+
+
+def extract_audios(video_paths: list[Path], output_dir: Path, sample_rate: int) -> None:
+    for video_path in video_paths:
+        extract_audio_from_video(video_path, output_dir, sample_rate)
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Extract audio from videos for multiple subjects and camera types.')
-    parser.add_argument('input_dir', help='Root folder containing videos')
-    parser.add_argument('output_dir', help='Folder to save cut videos and audios')
-    parser.add_argument('--subject-ids', help='Process only specific subject IDs e.g. 1,2 or 1)')
+    parser = argparse.ArgumentParser(
+        description='Extract audio from all videos in a folder or from one specific video file.'
+    )
+    parser.add_argument('input_path', help='Video folder or single video file path')
+    parser.add_argument('output_dir', help='Folder to save extracted audio files')
+    parser.add_argument(
+        '--sample-rate',
+        type=int,
+        default=48000,
+        help='Output audio sample rate in Hz (default: 48000)'
+    )
     args = parser.parse_args()
 
-    if not Path(args.input_dir).exists():
-        print(f"Input Directory Not Found: {args.input_dir}")
+    input_path = Path(args.input_path)
+    output_dir = Path(args.output_dir)
+
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True, exist_ok=True)
+        print(f"No output directory found. Created: {output_dir}")
+
+    try:
+        video_paths = discover_videos(input_path)
+    except (FileNotFoundError, ValueError) as exc:
+        print(exc)
         return
-    if not Path(args.output_dir).exists():
-        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-        print(f"No Output Directory Found, Created output directory: {args.output_dir}")
 
-    if args.subject_ids:
-        subject_ids = [int(sid) for sid in args.subject_ids.split(',')]
-        print(f"Processing only specific subject IDs: {subject_ids}")
-    else:
-        video_dir = Path(args.input_dir)
-        subject_ids = [
-            int(p.stem.split('_')[0]) for p in video_dir.iterdir()
-            if p.is_file() and p.suffix.lower() in {".mp4", ".avi", ".mov", ".mkv", ".webm"}
-        ]
-        subject_ids = sorted(set(subject_ids))
+    if not video_paths:
+        print(f"No video files found in {input_path}")
+        return
 
-    if not subject_ids:
-        print("No subject IDs found in the input directory.")
-        return  
+    if args.sample_rate <= 0:
+        print(f"Invalid sample rate: {args.sample_rate}. It must be a positive integer.")
+        return
 
-    extract_audios(
-        subj_ids=subject_ids,
-        cameras=['child', 'parent', 'side'],
-        input_dir=args.input_dir,
-        output_dir=args.output_dir
-    )
+    print(f"Found {len(video_paths)} video file(s) to process.")
+    extract_audios(video_paths, output_dir, args.sample_rate)
 
 if __name__ == "__main__":
     main()
