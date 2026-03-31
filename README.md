@@ -24,7 +24,8 @@ This folder contains the synchronization stage of the GBAT workflow. The alignme
 ### Videos
 `video_aligner_publish_2.py` expects filenames like:
 
-- `{subject}_child.mp4`
+- `{subject}_{camera_id}.mp4`
+For example:
 - `{subject}_parent.mp4`
 - `{subject}_side.mp4`
 
@@ -49,6 +50,8 @@ Important:
 - `{subject}_{camera}_gaze.csv`
 
 Here, `{camera}` is also matched as a string from filenames rather than from a hard-coded fixed set.
+
+The world timestamp CSV should include the timestamp of each frame of the video. The gaze CSV should include the timestamp of each gaze. They do not need to have the same temporal resolution.
 
 The world timestamp CSV must contain `timestamp [ns]`. The gaze CSV must contain at least:
 
