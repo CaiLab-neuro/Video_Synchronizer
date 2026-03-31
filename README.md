@@ -25,9 +25,6 @@ This folder contains the synchronization stage of the GBAT workflow. The alignme
 `video_aligner_publish_2.py` expects filenames like:
 
 - `{subject}_{camera_id}.mp4`
-For example:
-- `{subject}_parent.mp4`
-- `{subject}_side.mp4`
 
 Important:
 
