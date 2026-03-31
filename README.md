@@ -2,7 +2,7 @@
 
 `Video_Synchronizer` aligns multimodal recordings across cameras using audio, then maps the synchronized cut boundaries back to gaze/world timestamp files.
 
-This folder contains the synchronization stage of the GBAT workflow. The alignment scripts assume video filenames follow a `{subject}_{camera}.mp4` naming pattern, while `extract_audios_1.py` can extract audio from any supported video filename.
+This folder contains the synchronization stage of the GBAT workflow. The alignment scripts assume filenames follow a `{subject}_{camera}...` naming pattern, where `{camera}` is a camera ID string such as `child`, `parent`, or `side`. Those names are examples, not the only camera IDs accepted by the code.
 
 ## Main Scripts
 
@@ -28,6 +28,12 @@ This folder contains the synchronization stage of the GBAT workflow. The alignme
 - `{subject}_parent.mp4`
 - `{subject}_side.mp4`
 
+Important:
+
+- In `video_aligner_publish_2.py`, camera IDs are handled as strings taken from the second underscore-separated token in the filename.
+- The code does not enforce that camera IDs must be exactly `child`, `parent`, or `side`; those are example names used in this README.
+- The key requirement is consistent naming across related files, for example `{subject}_room.mp4`, `{subject}_room.wav`, `{subject}_room_world_timestamps.csv`, and `{subject}_room_gaze.csv`.
+
 `extract_audios_1.py` accepts any video filename ending in one of:
 
 - `.mp4`
@@ -41,6 +47,8 @@ This folder contains the synchronization stage of the GBAT workflow. The alignme
 
 - `{subject}_{camera}_world_timestamps.csv`
 - `{subject}_{camera}_gaze.csv`
+
+Here, `{camera}` is also matched as a string from filenames rather than from a hard-coded fixed set.
 
 The world timestamp CSV must contain `timestamp [ns]`. The gaze CSV must contain at least:
 
@@ -116,6 +124,7 @@ Common examples of optional arguments:
 
 - If `--subject-id` is omitted, the script scans `input_video_dir`, takes the first underscore-separated token from each video filename, converts it to an integer, removes duplicates with `np.unique`, and processes all discovered subjects.
 - If `--camera-id` is omitted, the script scans `input_video_dir`, takes the second underscore-separated token from each video filename, removes duplicates with `np.unique`, and processes all discovered camera IDs.
+- `--camera-id` accepts camera ID strings. `child,parent,side` are examples, not the only values supported by the code.
 
 Outputs include:
 
@@ -133,7 +142,7 @@ Outputs include:
 python gaze_frame_alignment_in_cut_3.py <input_cut_video_dir> <input_gaze_world_dir> <output_dir> <pickle_file>
 ```
 
-Common examples of ptional arguments:
+Common examples of optional arguments:
 
 - `--subject-id 27,28`
 - `--camera-id child,parent`
@@ -142,6 +151,7 @@ Common examples of ptional arguments:
 - If both are omitted, the script discovers all `(subject, camera)` pairs by scanning `input_cut_video_dir` for files matching `*_cut_merged.mp4`.
 - Each filename is parsed as `{subject}_{camera}_cut_merged.mp4`, the discovered pairs are deduplicated, and `sorted(pairs)` is used, so the default processing order is the sorted list of all available subject/camera pairs.
 - If only one filter is provided, the script first discovers all pairs and then keeps only the pairs matching the given subjects or cameras.
+- `--camera-id` accepts camera ID strings. `child,parent` are examples, not hard-coded required values.
 
 Outputs include:
 
@@ -152,6 +162,7 @@ Outputs include:
 
 - `extract_audios_1.py` accepts either a folder of videos or one specific video file, supports `.mp4`, `.avi`, `.mov`, `.mkv`, and `.webm`, and defaults to a `48000` Hz output sample rate.
 - `video_aligner_publish_2.py` defaults to all discovered subjects and all discovered camera IDs from the input video filenames.
+- Across `video_aligner_publish_2.py` and `gaze_frame_alignment_in_cut_3.py`, camera IDs are generally treated as strings parsed from filenames rather than as a hard-coded fixed set. The main requirement is consistent camera naming across matching video, audio, gaze, and world files.
 - `video_aligner_publish_2.py` chooses `camera_list[0]` as the reference if `--ref-cam` is not provided. If that reference camera is missing for a subject after waveform loading, it falls back to the first camera actually present in the loaded waveform dictionary.
 - `gaze_frame_alignment_in_cut_3.py` defaults to all discovered `(subject, camera)` pairs from `*_cut_merged.mp4` files in the cut-video directory.
 - The synchronizer saves cut-frame metadata to a pickle file; `gaze_frame_alignment_in_cut_3.py` uses that file to remap timestamps to the cut videos.
