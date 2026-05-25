@@ -10,15 +10,6 @@ This folder contains the synchronization stage of the GBAT workflow. The alignme
 - `video_aligner_publish_2.py`: estimates camera offsets from audio spectrograms, cuts synchronized video/audio segments, and exports merged cut videos
 - `gaze_frame_alignment_in_cut_3.py`: creates cut-aligned gaze and world timestamp CSV files for downstream gaze-object analysis
 
-## Pipeline
-
-1. Extract audio from the original videos.
-2. Compute cross-camera temporal offsets from log-mel spectrograms.
-3. Trim each recording to the shared overlapping segment.
-4. Cut the corresponding video and audio with `ffmpeg`.
-5. Merge cut video and cut audio into synchronized outputs.
-6. Use the saved cut-frame mapping to generate cut-aligned gaze/world CSV files.
-
 ## Installation
 
 ### Requirements
