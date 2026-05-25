@@ -1,4 +1,4 @@
-# Video_Synchronizer
+# Video-Synchronizer
 
 `Video_Synchronizer` aligns video recordings across cameras using audio spectrogram, then cut gaze/world timestamp files based on synchronized cut boundaries. This post-hoc alignment tool is useful when hardware synchronization is not feasible.
 
