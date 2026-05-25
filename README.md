@@ -35,7 +35,7 @@ pip install numpy pandas matplotlib librosa torch opencv-python
 
 ## Usage
 
-### 1. Extract audio
+### 1. Extract audio (extract_audios_1.py)
 
 ```bash
 python extract_audios_1.py <input_path> <output_audio_dir> --sample-rate <sample_rate>
@@ -57,7 +57,7 @@ Output:
 
 - `{video_stem}.wav`
 
-### 2. Synchronize and cut videos
+### 2. Synchronize and cut videos (video_aligner_publish_2.py)
 
 ```bash
 python video_aligner_publish_2.py <input_video_dir> <input_audio_dir> <input_gaze_world_dir> <output_dir> 
@@ -90,7 +90,7 @@ Outputs:
 - spectrogram and cross-correlation figures
 - log file
 
-### 3. Align gaze/world CSVs to the cut videos
+### 3. Align gaze/world CSVs to the cut videos (gaze_frame_alignment_in_cut_3.py)
 
 ```bash
 python gaze_frame_alignment_in_cut_3.py <input_cut_video_dir> <input_gaze_world_dir> <output_dir> <pickle_file>
