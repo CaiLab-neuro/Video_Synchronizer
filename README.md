@@ -167,3 +167,19 @@ Outputs include:
 - `gaze_frame_alignment_in_cut_3.py` defaults to all discovered `(subject, camera)` pairs from `*_cut_merged.mp4` files in the cut-video directory.
 - The synchronizer saves cut-frame metadata to a pickle file; `gaze_frame_alignment_in_cut_3.py` uses that file to remap timestamps to the cut videos.
 - `gaze_frame_alignment_in_cut_3.py` can count frames with `ffprobe` and falls back to OpenCV decoding if needed.
+
+## Citation
+
+If you use the tool, please cite:
+
+```bibtex
+@misc{baig2026gazebehaviorannotationtoolkitgbat,
+      title={GazeBehavior Annotation Toolkit (GBAT): AI-powered toolkit for automatic annotation of egocentric eye-tracking and video data of child-caregiver interaction}, 
+      author={Iba Baig and Kevin Li and Yanbin Xu and Seiji Cattelain and Marie Hallo and Hayato Ono and Sho Tsuji and Ming Bo Cai},
+      year={2026},
+      eprint={2605.22962},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2605.22962}, 
+}
+```
