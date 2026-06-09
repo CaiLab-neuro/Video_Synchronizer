@@ -55,6 +55,20 @@ import cv2
 import pandas as pd
 
 
+def _id_to_text(value) -> str:
+    return str(value).strip()
+
+def _candidate_keys(value) -> list:
+    text = _id_to_text(value)
+    candidates = [text]
+    try:
+        numeric = int(text)
+    except ValueError:
+        numeric = None
+    if numeric is not None and numeric not in candidates:
+        candidates.append(numeric)
+    return candidates
+
 def setup_logging(log_path: Path) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
@@ -84,10 +98,15 @@ class GazeFrameAligner:
     def discover_pairs(video_dir: Path) -> list[tuple[str, str]]:
         pairs: set[tuple[str, str]] = set()
         for video_path in video_dir.glob("*_cut_merged.mp4"):
-            parts = video_path.stem.split("_")
-            if len(parts) < 4:
+            stem = video_path.stem
+            suffix = "_cut_merged"
+            if not stem.endswith(suffix):
                 continue
-            pairs.add((parts[0], parts[1]))
+            base_stem = stem[: -len(suffix)]
+            parts = base_stem.split("_", 1)
+            if len(parts) != 2 or not parts[0] or not parts[1]:
+                continue
+            pairs.add((_id_to_text(parts[0]), _id_to_text(parts[1])))
         return sorted(pairs)
 
     @staticmethod
@@ -207,16 +226,13 @@ class GazeFrameAligner:
         return decoded_count
 
     def get_cut_info_entry(self, subject_id: str, camera: str):
-        if subject_id in self.cut_info and camera in self.cut_info[subject_id]:
-            return self.cut_info[subject_id][camera]
-
-        try:
-            subject_int = int(subject_id)
-        except ValueError:
-            return None
-
-        if subject_int in self.cut_info and camera in self.cut_info[subject_int]:
-            return self.cut_info[subject_int][camera]
+        for subject_key in _candidate_keys(subject_id):
+            if subject_key not in self.cut_info:
+                continue
+            subject_cut_info = self.cut_info[subject_key]
+            for camera_key in _candidate_keys(camera):
+                if camera_key in subject_cut_info:
+                    return subject_cut_info[camera_key]
 
         return None
 
@@ -256,6 +272,8 @@ class GazeFrameAligner:
         return aligned.dropna(subset=["frame_idx"]).reset_index(drop=True)
 
     def process_pair(self, subject_id: str, camera: str) -> None:
+        subject_id = _id_to_text(subject_id)
+        camera = _id_to_text(camera)
         cut_video_path = self.video_dir / f"{subject_id}_{camera}_cut_merged.mp4"
         world_path = self.gaze_world_path / f"{subject_id}_{camera}_world_timestamps.csv"
         gaze_path = self.gaze_world_path / f"{subject_id}_{camera}_gaze.csv"
@@ -325,8 +343,8 @@ def main() -> None:
     parser.add_argument("input_gaze_world_dir", help="Directory containing raw gaze/world CSV files")
     parser.add_argument("output_dir", help="Directory to save cut gaze/world CSV files")
     parser.add_argument("pickle_file", help="Pickle file with cut start frame per subject/camera")
-    parser.add_argument("--subject-id", help="Optional comma-separated subject IDs (e.g., 27,Mingbo)")
-    parser.add_argument("--camera-id", help="Optional comma-separated cameras (e.g., child,parent)")
+    parser.add_argument("--subject-id", help="Optional comma-separated subject IDs (e.g., 27,S01)")
+    parser.add_argument("--camera-id", help="Optional comma-separated camera IDs/types (e.g., child,parent,1)")
     parser.add_argument("--log-path", help="Optional log file path")
     args = parser.parse_args()
 
@@ -352,10 +370,10 @@ def main() -> None:
 
     pairs = GazeFrameAligner.discover_pairs(Path(args.input_video_dir))
     if args.subject_id:
-        subjects = {x.strip() for x in args.subject_id.split(",") if x.strip()}
+        subjects = {_id_to_text(x) for x in args.subject_id.split(",") if _id_to_text(x)}
         pairs = [(subj, cam) for subj, cam in pairs if subj in subjects]
     if args.camera_id:
-        cameras = {x.strip() for x in args.camera_id.split(",") if x.strip()}
+        cameras = {_id_to_text(x) for x in args.camera_id.split(",") if _id_to_text(x)}
         pairs = [(subj, cam) for subj, cam in pairs if cam in cameras]
 
     if not pairs:
