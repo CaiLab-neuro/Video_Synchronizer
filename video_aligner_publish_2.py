@@ -148,6 +148,7 @@ class FrameAligner:
         self.audio_sr = int(audio_sr) if audio_sr is not None else None
         self.spectrogram_sr = float(spectrogram_sr)
         self.n_mels = int(n_mels)
+        self.time_lags_all: dict[str, dict[str, float]] = {}
         self.to_cut_frames_all: dict[str, dict[str, list[float | int]]] = {}
         os.makedirs(self.output_dir, exist_ok=True)
         os.makedirs(self.merged_output_dir, exist_ok=True)
@@ -650,15 +651,7 @@ class FrameAligner:
             plt.savefig(f"{self.output_dir}/cross_correlation_subj{subj_ID}_cam{key}_ref{ref_cam}.png")
             plt.close()
 
-        with open(f'{self.output_dir}/audio_offset.pkl', 'wb') as f:
-            pickle.dump({'time_lags': time_lags, 'unit': 'sec', 'note': 'negative indicates the sound of the recording precedes that of the child'}, f)
-        self.logger.info(
-            "Saved audio offsets: %s | timing_sec={mel_ref:%.3f, mel_compare:%.3f, correlation:%.3f}",
-            f"{self.output_dir}/audio_offset.pkl",
-            timing["mel_ref"],
-            timing["mel_compare"],
-            timing["correlation"],
-        )
+        self.time_lags_all[subj_ID] = time_lags[subj_ID]
         return time_lags[subj_ID]
 
     def time_lag_to_cut_frames(
@@ -1036,6 +1029,26 @@ class FrameAligner:
         )
         return path
 
+    def save_audio_offsets_pickle(self, pickle_path: str | Path) -> Path:
+        path = Path(pickle_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            'time_lags': self.time_lags_all,
+            'unit': 'sec',
+            'note': 'negative indicates the sound of the recording precedes that of the child',
+        }
+        with open(path, "wb") as f:
+            pickle.dump(payload, f)
+
+        total_cameras = sum(len(camera_map) for camera_map in self.time_lags_all.values())
+        self.logger.info(
+            "Saved audio-offset pickle: %s subjects=%d cameras=%d",
+            path,
+            len(self.time_lags_all),
+            total_cameras,
+        )
+        return path
+
 def main():
 
     """Main function to run the video synchronization."""
@@ -1108,6 +1121,7 @@ def main():
         merged_output_dir = args.output_dir
 
     cut_frames_pkl_path = Path(args.cut_frames_pkl) if args.cut_frames_pkl else Path(args.output_dir) / "to_cut_frames.pkl"
+    audio_offsets_pkl_path = Path(args.output_dir) / "audio_offset.pkl"
 
     # Initialize synchronizer
     logger.info("Subjects=%s Cameras=%s", list(subj_ids), list(camera_list))
@@ -1116,6 +1130,7 @@ def main():
     logger.info("Input world timestamp dir: %s", args.input_world_timestamp_dir)
     logger.info("Output dir: %s", args.output_dir)
     logger.info("Merged output dir: %s", merged_output_dir)
+    logger.info("Audio-offset pickle path: %s", audio_offsets_pkl_path)
     logger.info("Cut-frame pickle path: %s", cut_frames_pkl_path)
 
     synchronizer = FrameAligner(
@@ -1136,6 +1151,8 @@ def main():
         logger.info("Starting subject: %s", subj)
         synchronizer.process_subject(subj, camera_list, args.ref_cam)
         logger.info("Completed subject: %s", subj)
+    saved_audio_offset_path = synchronizer.save_audio_offsets_pickle(audio_offsets_pkl_path)
+    logger.info("Audio-offset pickle ready: %s", saved_audio_offset_path)
     saved_pickle_path = synchronizer.save_cut_frames_pickle(cut_frames_pkl_path)
     logger.info("Cut-frame pickle ready: %s", saved_pickle_path)
     logger.info("Video synchronization complete.")
