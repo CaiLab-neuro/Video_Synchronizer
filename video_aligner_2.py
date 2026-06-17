@@ -224,6 +224,14 @@ class FrameAligner:
 
         return None
 
+    def _find_audio_path(self, subj_ID, camera_type):
+        subj_ID = _id_to_text(subj_ID)
+        camera_type = _id_to_text(camera_type)
+        audio_path = Path(self.input_audio_dir) / f"{subj_ID}_{camera_type}.wav"
+        if audio_path.is_file():
+            return audio_path
+        return None
+
     @staticmethod
     def _parse_frame_rate(value):
         if value in (None, "", "N/A"):
@@ -813,17 +821,15 @@ class FrameAligner:
         self.logger.info("Saved cut video: %s", output_file_path)
         return output_file_path
 
-    def cut_audio(self, start_frame_relative_time, end_frame_relative_time, original_file_path, output_file_path):
+    def cut_audio(self, start_frame_relative_time, end_frame_relative_time, source_audio_path, output_file_path):
 
         """
-        Cut audio segement from original file merge with cut video
+        Cut audio segment from the pre-extracted WAV file and merge it with cut video.
 
         parameters:
         start_frame_relative_time : float, start time in seconds (corresponding time to the cut frame from worldstamp.csv)
         end_frame_relative_time : float, end time in seconds (corresponding time to the cut frame from worldstamp.csv)
-        subj : Subject ID.
-        camera : Camera ID/type.
-        original_file_path : str, Path to the original video file for a specific subject and camera
+        source_audio_path : str, Path to the pre-extracted WAV file for a specific subject and camera
         output_file_path : str, Path to the output audio file
 
         Returns
@@ -846,7 +852,7 @@ class FrameAligner:
 
         self.logger.info(
             "Extracting audio segment start=%s end=%s duration=%s input=%s",
-            start_ts, end_ts, dur_ts, original_file_path
+            start_ts, end_ts, dur_ts, source_audio_path
         )
 
 
@@ -856,7 +862,7 @@ class FrameAligner:
             "ffmpeg",
             "-y",                     # overwrite if exists
             "-ss", start_ts,          # seek to start (input seeking for speed)
-            "-i", original_file_path,
+            "-i", source_audio_path,
             "-t", dur_ts,             # duration (safer than -to here)
             "-vn",
             "-acodec", "pcm_s16le",   # uncompressed 16-bit PCM WAV
@@ -961,6 +967,9 @@ class FrameAligner:
                 original_file_path = self._find_video_path(subj, camera)
                 if original_file_path is None:
                     raise FileNotFoundError(f"No matching video found for subject={subj} camera={camera} in {self.input_video_dir}")
+                source_audio_path = self._find_audio_path(subj, camera)
+                if source_audio_path is None:
+                    raise FileNotFoundError(f"No matching WAV found for subject={subj} camera={camera} in {self.input_audio_dir}")
 
                 start_frame, end_frame = to_cut_frames[camera][0], to_cut_frames[camera][1]
                 start_frame_relative_time, end_frame_relative_time = to_cut_frames[camera][2], to_cut_frames[camera][3]
@@ -972,8 +981,8 @@ class FrameAligner:
                 )
             
                 self.logger.info(
-                    "Processing subject=%s camera=%s start_frame=%s end_frame=%s",
-                    subj, camera, start_frame, end_frame
+                    "Processing subject=%s camera=%s start_frame=%s end_frame=%s audio_source=%s",
+                    subj, camera, start_frame, end_frame, source_audio_path
                 )
 
                 t_cut_video = time.perf_counter()
@@ -986,7 +995,7 @@ class FrameAligner:
                     f"{subj}_{camera}_cut.wav"
                 )
                 t_cut_audio = time.perf_counter()
-                self.cut_audio(start_frame_relative_time, end_frame_relative_time, original_file_path, output_audio_path)
+                self.cut_audio(start_frame_relative_time, end_frame_relative_time, source_audio_path, output_audio_path)
                 timing["ffmpeg_cut_audio"] += time.perf_counter() - t_cut_audio
 
                 merged_output_path = (

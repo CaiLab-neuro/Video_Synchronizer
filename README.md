@@ -4,11 +4,14 @@
 
 This folder contains the synchronization stage of the GBAT workflow. The alignment scripts assume filenames follow a `{subject}_{camera}...` naming pattern, where `{subject}` is a subject ID, and `{camera}` is a camera ID.
 
-## Main Scripts
+## Main Files
 
 - `extract_audios_1.py`: extracts mono WAV audio from input videos with `ffmpeg`
-- `video_aligner_publish_2.py`: estimates camera offsets from audio spectrograms, cuts synchronized video/audio segments, and exports merged cut videos
-- `gaze_frame_alignment_in_cut_3.py`: creates cut-aligned gaze and world timestamp CSV files for downstream gaze-object analysis
+- `video_aligner_2.py`: estimates camera offsets from audio spectrograms, cuts synchronized video/audio segments, exports merged cut videos, and saves cut-frame metadata
+- `video_aligner_compression.ipynb`: notebook workflow for recordings that still drift after first alignment; it measures front/middle/back residual offsets, plans a second frame-index cut from the original videos, applies audio tempo correction, and verifies merged outputs
+- `gaze_frame_alignment&cut_3.py`: creates cut-aligned gaze and world timestamp CSV files for downstream gaze-object analysis
+
+Note: `video_aligner_compression.ipynb` reuses the `FrameAligner` implementation. Keep the notebook import cell synchronized with the current aligner module name in this folder (`video_aligner_2.py`).
 
 ## Installation
 
@@ -50,10 +53,10 @@ Output:
 
 - `{video_stem}.wav`
 
-### 2. Synchronize and cut videos (video_aligner_publish_2.py)
+### 2. Synchronize and cut videos (video_aligner_2.py)
 
 ```bash
-python video_aligner_publish_2.py <input_video_dir> <input_audio_dir> <output_dir>
+python video_aligner_2.py <input_video_dir> <input_audio_dir> <output_dir>
 ```
 optional arguments:
 - `--input-world-timestamp-dir <path>`
@@ -69,7 +72,7 @@ optional arguments:
 - `--cut-frames-pkl <path>`
 - `--log-path <path>`
 
-- `video_aligner_publish_2.py` expects filenames with consistent naming: `{subject}_{camera_id}.<video_ext>` and `{subject}_{camera_id}.wav`. Supported video extensions are `.mp4`, `.avi`, `.mov`, `.mkv`, and `.webm`. If world timestamp CSVs are provided, they should be named `{subject}_{camera_id}_world_timestamps.csv`.
+- `video_aligner_2.py` expects filenames with consistent naming: `{subject}_{camera_id}.<video_ext>` and `{subject}_{camera_id}.wav`. Supported video extensions are `.mp4`, `.avi`, `.mov`, `.mkv`, and `.webm`. If world timestamp CSVs are provided, they should be named `{subject}_{camera_id}_world_timestamps.csv`.
 - The world timestamp CSV is optional for this script (`--input-world-timestamp-dir`). If it is missing, frame boundaries are estimated from video FPS/duration using `ffprobe`.
 - If provided, the world timestamp CSV should include each video frame timestamp and must contain column `timestamp [ns]`.
 - Subject and camera IDs may be numeric-looking or text. The scripts treat both as filename tokens, so `27`, `S01`, `1`, and `child` are all valid IDs.
@@ -78,7 +81,8 @@ optional arguments:
 - If `--camera-id` is omitted, the script scans `input_video_dir`, takes the rest of the filename stem after the first underscore, removes duplicates, and processes all discovered camera IDs.
 - Spectrogram synchronization parameters are configurable with `--spectrogram-sr` and `--n-mels`. By default, the script uses each loaded WAV file's sample rate; pass `--audio-sr` to resample all WAV files before synchronization.
 - `--device auto` uses CUDA when available and CPU otherwise. CPU synchronization uses SciPy FFT correlation; CUDA synchronization uses PyTorch `conv1d`.
-- `video_aligner_publish_2.py` chooses `camera_list[0]` as the reference if `--ref-cam` is not provided. If that reference camera is missing for a subject after waveform loading, it falls back to the first camera actually present in the loaded waveform dictionary.
+- `video_aligner_2.py` chooses `camera_list[0]` as the reference if `--ref-cam` is not provided. If that reference camera is missing for a subject after waveform loading, it falls back to the first camera actually present in the loaded waveform dictionary.
+- Cut audio is extracted from the pre-extracted WAV files in `input_audio_dir`, not from the original video container audio. This helps keep sample rates consistent when source videos contain different native audio stream rates.
 - If `--cut-frames-pkl` is omitted, the default path is `output_dir/to_cut_frames.pkl`.
 - If `--log-path` is omitted, the default path is `output_dir/video_aligner.log`.
 
@@ -93,10 +97,51 @@ Outputs:
 - `spectrogram_subj{subject}_cam{camera}.png` and `cross_correlation_subj{subject}_cam{camera}_ref{ref_cam}.png` in `output_dir`
 - `video_aligner.log` in `output_dir`, or the path provided with `--log-path`
 
-### 3. Align gaze/world CSVs to the cut videos (gaze_frame_alignment_in_cut_3.py)
+### 3. Correct clips that drift after first alignment (video_aligner_compression.ipynb)
+
+Use `video_aligner_compression.ipynb` when clips look synchronized near the middle but drift near the beginning or end. The notebook is intended for second-pass correction after standard spectrogram alignment.
+
+High-level workflow:
+
+- Run or reuse first alignment outputs in `01_first_alignment` and `01_first_alignment_merged`.
+- Measure residual front/middle/back audio offsets from the first-cut WAV files.
+- Build a second-cut plan from original-video time points using the measured front and back offsets.
+- Convert the second-cut time points to original frame indices and extract video frames from the original videos.
+- Cut original audio over the same time span and apply `atempo=(span - drift) / span`.
+- Merge the second-cut video and tempo-adjusted audio into `{subject}_{camera}_cut2_merged.mp4`.
+- Verify merged outputs by measuring front/middle/back residual offsets again.
+
+The notebook reads these environment variables if they are set:
 
 ```bash
-python gaze_frame_alignment_in_cut_3.py <input_cut_video_dir> <input_gaze_world_dir> <output_dir> <pickle_file>
+export GBAT_VIDEO_DIR=/path/to/input_videos
+export GBAT_AUDIO_DIR=/path/to/input_audios
+export GBAT_SYNC_OUTPUT_DIR=/path/to/output_root
+```
+
+Important output folders and files:
+
+- `01_first_alignment/`: first-pass cut videos, cut WAV files, `audio_offset.pkl`, and `to_cut_frames.pkl`
+- `01_first_alignment_merged/`: first-pass merged videos
+- `diagnostics/residual_front_back_offsets.csv`: residual offsets before second correction
+- `02_second_cut_stretch_corrected/second_cut_compression_plan.csv`: second-pass frame/audio plan
+- `02_second_cut_stretch_corrected/{subject}_{camera}_cut2_video.mp4`: second-pass video-only frame cut
+- `02_second_cut_stretch_corrected/{subject}_{camera}_cut2_audio.wav`: second-pass tempo-adjusted WAV
+- `02_second_cut_stretch_corrected/{subject}_{camera}_cut2_merged.mp4`: final merged second-pass output
+- `diagnostics/merged_front_back_offsets.csv`: residual offsets after second-pass merge and tempo correction
+
+For short simulated clips with known small offsets, reduce `CONFIG.max_lag_sec` and set `CONFIG.first_ref_cam` explicitly before first alignment. For example:
+
+```python
+CONFIG.first_ref_cam = "parent"
+CONFIG.audio_sr = 48000
+CONFIG.max_lag_sec = 5.0
+```
+
+### 4. Align gaze/world CSVs to the cut videos (gaze_frame_alignment&cut_3.py)
+
+```bash
+python 'gaze_frame_alignment&cut_3.py' <input_cut_video_dir> <input_gaze_world_dir> <output_dir> <pickle_file>
 ```
 Optional arguments:
 
@@ -105,7 +150,7 @@ Optional arguments:
 - `--log-path <path>`
 
 - The code expects filenames with consistent naming: `{subject}_{camera_id}_cut_merged.mp4`, `{subject}_{camera_id}_world_timestamps.csv`, and `{subject}_{camera_id}_gaze.csv`.
-- `pickle_file` should usually be the `to_cut_frames.pkl` file produced by `video_aligner_publish_2.py`.
+- `pickle_file` should usually be the `to_cut_frames.pkl` file produced by `video_aligner_2.py`.
 - The world timestamp CSV must contain column `timestamp [ns]`.
 - The gaze CSV must contain columns `timestamp [ns]`, `gaze x [px]`, and `gaze y [px]`.
 - If both <subject_id> and <camera_id> are omitted, the script discovers all `(subject, camera)` pairs by scanning `input_cut_video_dir` for files matching `*_cut_merged.mp4`.
@@ -117,11 +162,9 @@ Outputs:
 - `{subject}_{camera}_world_timestamps_cut.csv`
 - `{subject}_{camera}_gaze_cut.csv`
 
-### 4. Videos go out of sync over time
+### 5. Videos go out of sync over time
 
-Note: some long recordings can exhibit cumulative synchronization drift after initial alignment (e.g., the child appears ahead at the start but lags at the end). See [synchronization_raw_data_extract_frames.ipynb](synchronization_raw_data_extract_frames.ipynb) for recommended fixes (measuring drift with spectrogram cross-correlation and applying small time-stretch/compression to frame lengths or audio timestamps).
-
-[Still Working on This]
+Some long recordings can exhibit cumulative synchronization drift after initial alignment, for example the child camera appears ahead at the start but lags at the end. Use [video_aligner_compression.ipynb](video_aligner_compression.ipynb) for this case. The second-pass notebook keeps video and audio handling separate: video is cut again by original frame indices, while audio is cut from the matching original time span and tempo-corrected before merging.
 
 ## Citation
 
